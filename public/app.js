@@ -17,8 +17,12 @@
     selected: null,    // rack tile id chosen for tap-to-place
     swapMode: false, swapSel: {},
     cursor: { r: 7, c: 7, dir: "h" },
-    busy: false, pollTimer: null, lastLogLen: 0, lastStatus: null, nextId: 1, zoom: false
+    busy: false, pollTimer: null, lastLogLen: 0, lastStatus: null, nextId: 1, zoom: false,
+    words: {},         // dictionary cache for the live preview: { WORD: true|false }
+    checkTimer: null, checking: {}
   };
+  var Sound = window.Sound || { place: noop, lift: noop, shuffle: noop, play: noop, pass: noop, turn: noop, yourTurn: noop, invalid: noop, win: noop, lose: noop, isMuted: function () { return true; }, setMuted: noop };
+  function noop() {}
 
   /* ---------------------------------------------------------------- utilities */
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; }); }
@@ -50,6 +54,12 @@
   var ICONS = {
     theme: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.9"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg>',
+    sound: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+    "sound-off": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
+    shuffle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 4.8C14.3 16 15.5 17 17.5 17H21M3 17h3.5c1.3 0 2.3-.5 3.1-1.3M14.4 8.3C15.2 7.5 16.2 7 17.5 7H21M18.5 4.5 21 7l-2.5 2.5M18.5 14.5 21 17l-2.5 2.5"/></svg>',
+    recall: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+    zoom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M10.5 7.5v6M7.5 10.5h6"/></svg>',
+    fit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M7.5 10.5h6"/></svg>',
     "copy-link": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>'
   };
 
@@ -63,7 +73,7 @@
       cache: "no-store"
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) { var err = new Error(data.error || "The server didn't respond. Check your connection."); err.status = r.status; throw err; }
+        if (!r.ok) { var err = new Error(data.error || "The server didn't respond. Check your connection."); err.status = r.status; err.badWords = data.badWords; throw err; }
         return data;
       });
     }, function () { throw new Error("Can't reach the game server. Check your connection."); });
@@ -87,6 +97,8 @@
   /* ---------------------------------------------------------------- session & routing */
   function boot() {
     $$("[data-action=theme], [data-action=help], .icon-btn[data-action=copy-link]").forEach(function (b) { b.innerHTML = ICONS[b.dataset.action] || ""; });
+    $$("[data-action] > .ic").forEach(function (i) { i.innerHTML = ICONS[i.parentNode.dataset.action] || ""; });
+    renderSoundButton();
     buildWordmark();
     buildBoard();
     buildLetterGrid();
@@ -177,18 +189,26 @@
     if (v.status === "playing" || v.status === "over") {
       var newEntries = v.log.length - (S.lastLogLen || 0);
       if (prev && prev.status === "playing" && newEntries > 0) {
+        var othersMoved = false;
         v.log.slice(-newEntries).forEach(function (e) {
           if (e.player === v.you || e.type === "end") return;
+          othersMoved = true;
           var text = logText(e, v);
           if (text) toast(text);
         });
+        if (othersMoved && v.status === "playing") {
+          if (v.turn === v.you) Sound.yourTurn(); else Sound.turn();
+        }
       }
       S.lastLogLen = v.log.length;
     }
     var mine = v.status === "playing" && v.turn === v.you;
     document.title = (mine ? "Your turn — " : "") + "Triple Word";
     if (mine && prev && prev.status === "playing" && prev.turn !== v.you && navigator.vibrate) { try { navigator.vibrate(40); } catch (e) {} }
-    if (v.status === "over" && prev && prev.status === "playing") setTimeout(showGameOver, 600);
+    if (v.status === "over" && prev && prev.status === "playing") setTimeout(function () {
+      if (v.result && v.result.winners.indexOf(v.you) !== -1) Sound.win(); else Sound.lose();
+      showGameOver();
+    }, 600);
   }
 
   /* ---------------------------------------------------------------- rendering */
@@ -199,7 +219,8 @@
     show("game");
     renderPlayers(); renderBoard(); renderRack(); renderActions(); renderLog();
     $("#game-code").textContent = v.code;
-    $("#bag-count").textContent = v.bagCount + (v.bagCount === 1 ? " tile" : " tiles") + " in bag";
+    $("#bag-count").innerHTML = '<strong>' + v.bagCount + '</strong><span class="bag-word">' + (v.bagCount === 1 ? " tile" : " tiles") + "</span> in bag";
+    $("#bag-count").setAttribute("aria-label", v.bagCount + (v.bagCount === 1 ? " tile" : " tiles") + " in bag");
   }
 
   function renderLobby() {
@@ -231,10 +252,11 @@
 
   function renderPlayers() {
     var v = S.view;
+    $("#players").style.setProperty("--np", v.players.length);
     $("#players").innerHTML = v.players.map(function (p, i) {
       var turn = v.status === "playing" && v.turn === i;
-      return '<div class="player' + (turn ? " is-turn" : "") + '" data-p="' + i + '">' +
-        '<div><div class="player-name">' + esc(p.name) + (i === v.you ? " (you)" : "") + "</div>" +
+      return '<div class="player' + (turn ? " is-turn" : "") + (i === v.you ? " is-you" : "") + '" data-p="' + i + '">' +
+        '<div class="player-info"><div class="player-name"><span class="nm">' + esc(p.name) + "</span>" + (i === v.you ? '<span class="you-tag">you</span>' : "") + "</div>" +
         '<div class="player-meta">' + (turn ? '<span class="now">Playing now</span>' : '<span class="tiles-left">' + p.rackCount + " tiles</span>") + "</div></div>" +
         '<div class="player-score" aria-label="' + p.score + ' points">' + p.score + "</div></div>";
     }).join("");
@@ -261,29 +283,84 @@
     var v = S.view;
     var pendingAt = {};
     S.pending.forEach(function (p) { pendingAt[p.r * SIZE + p.c] = p; });
+    var bad = invalidCells();
     var last = {};
     if (v.lastMove && v.lastMove.cells) v.lastMove.cells.forEach(function (k) { last[k] = v.lastMove.player; });
     var cells = $("#board").children;
     for (var k = 0; k < cells.length; k++) {
       var cell = cells[k], t = v.board[k], p = pendingAt[k], prem = E.PREMIUM[k];
       var sig = t ? "t" + t.l + t.b + (k in last ? last[k] : "") : p ? "p" + p.l + p.b + p.id : "e";
+      if (bad[k]) sig += "x";
       var isCursor = S.cursor.r * SIZE + S.cursor.c === k && document.activeElement === cell && !t && !p;
       sig += isCursor ? S.cursor.dir : "";
       if (cell.dataset.sig === sig) continue;
       cell.dataset.sig = sig;
       var label = "Row " + (Math.floor(k / SIZE) + 1) + ", column " + (k % SIZE + 1) + ", ";
       if (t) {
-        cell.innerHTML = '<span class="' + tileClass(t.l, t.b) + (k in last ? " last" : "") + '"' +
+        cell.innerHTML = '<span class="' + tileClass(t.l, t.b) + (k in last ? " last" : "") + (bad[k] ? " invalid" : "") + '"' +
           (k in last ? ' style="--lc: var(--p' + last[k] + ')"' : "") + ">" + tileHTML(t.l, { blank: t.b }) + "</span>";
         cell.setAttribute("aria-label", label + t.l + (t.b ? " (blank)" : ""));
       } else if (p) {
-        cell.innerHTML = '<span class="' + tileClass(p.l, p.b) + ' pending" data-pending="' + p.id + '">' + tileHTML(p.l, { blank: p.b }) + "</span>";
-        cell.setAttribute("aria-label", label + p.l + ", placed this turn. Activate to take back.");
+        cell.innerHTML = '<span class="' + tileClass(p.l, p.b) + ' pending' + (bad[k] ? " invalid" : "") + '" data-pending="' + p.id + '">' + tileHTML(p.l, { blank: p.b }) + "</span>";
+        cell.setAttribute("aria-label", label + p.l + ", placed this turn" + (bad[k] ? ", part of an invalid word" : "") + ". Activate to take back.");
       } else {
         cell.innerHTML = (prem && k !== E.CENTER ? LABELS[prem] : "") + (isCursor ? '<span class="cursor-arrow" aria-hidden="true">' + (S.cursor.dir === "h" ? "→" : "↓") + "</span>" : "");
         cell.setAttribute("aria-label", label + (k === E.CENTER ? "centre star, double word" : prem ? NAMES[prem] : "empty"));
       }
     }
+  }
+
+  /* ---------------------------------------------------------------- word validity (red highlight) */
+  // Evaluates the pending tiles once per render pass.
+  function moveStatus() {
+    var v = S.view;
+    if (!v || !S.pending.length || v.status !== "playing") return null;
+    var res = E.evaluate(v.board, S.pending);
+    if (!res.ok) return { res: res, badWords: [], unknown: [] };
+    var badWords = [], unknown = [];
+    if (v.settings && v.settings.checkWords) {
+      res.words.forEach(function (w) {
+        if (S.words[w.word] === false) badWords.push(w);
+        else if (S.words[w.word] === undefined) unknown.push(w.word);
+      });
+    }
+    return { res: res, badWords: badWords, unknown: unknown };
+  }
+
+  /** Board indexes to paint red: every tile of each word that isn't in the dictionary,
+   *  or all your placed tiles when the placement itself breaks the rules. */
+  function invalidCells() {
+    var m = moveStatus(), out = {};
+    if (!m) return out;
+    if (!m.res.ok) {
+      // A lone first tile is just a word in progress, so don't flag it yet.
+      if (S.pending.length > 1) S.pending.forEach(function (p) { out[p.r * SIZE + p.c] = true; });
+      return out;
+    }
+    m.badWords.forEach(function (w) { w.cells.forEach(function (k) { out[k] = true; }); });
+    return out;
+  }
+
+  /** Ask the server about words we haven't looked up yet (debounced, cached). */
+  function queueWordCheck(unknown) {
+    var need = unknown.filter(function (w) { return !S.checking[w]; });
+    if (!need.length) return;
+    clearTimeout(S.checkTimer);
+    S.checkTimer = setTimeout(function () {
+      var batch = moveStatus();
+      batch = batch ? batch.unknown.filter(function (w) { return !S.checking[w]; }) : [];
+      if (!batch.length) return;
+      batch.forEach(function (w) { S.checking[w] = true; });
+      api("GET", null, { check: batch.join(",") }).then(function (r) {
+        Object.keys(r.words || {}).forEach(function (w) { S.words[w] = r.words[w]; });
+      }, function () {
+        // Offline or server hiccup: stop asking about these; the server still checks on Play.
+        batch.forEach(function (w) { if (S.words[w] === undefined) S.words[w] = null; });
+      }).then(function () {
+        batch.forEach(function (w) { delete S.checking[w]; });
+        render();
+      });
+    }, 180);
   }
 
   function renderRack() {
@@ -319,8 +396,15 @@
       play.disabled = true; play.textContent = "Play";
       hint.textContent = mine ? (E.boardIsEmpty(v.board) ? "Start the game with a word across the centre star." : "Tap a tile, then tap a square. Or drag it.") : "You can arrange tiles while you wait.";
     } else {
-      var res = E.evaluate(v.board, S.pending);
-      if (res.ok) {
+      var m = moveStatus(), res = m.res;
+      if (res.ok && m.badWords.length) {
+        var names = m.badWords.map(function (w) { return w.word; }).filter(function (w, i, a) { return a.indexOf(w) === i; });
+        play.textContent = "Play"; play.removeAttribute("aria-label");
+        hint.textContent = names.join(", ") + (names.length > 1 ? " aren't words" : " isn't a word") + " in the dictionary";
+        hint.className = "move-hint bad";
+        play.disabled = true;
+      } else if (res.ok) {
+        if (m.unknown.length) queueWordCheck(m.unknown);
         play.textContent = "Play " + res.score;
         play.setAttribute("aria-label", "Play " + res.words.map(function (w) { return w.word; }).join(", ") + " for " + res.score + " points");
         hint.textContent = res.words.map(function (w) { return w.word + " " + w.score; }).join(", ") + (res.bingo ? ", plus 50 for using all 7" : "");
@@ -328,8 +412,9 @@
       } else {
         play.textContent = "Play"; play.removeAttribute("aria-label");
         hint.textContent = res.error;
+        if (S.pending.length > 1) hint.className = "move-hint bad";
       }
-      play.disabled = !mine || !res.ok || S.busy;
+      if (!(res.ok && m.badWords.length)) play.disabled = !mine || !res.ok || S.busy;
     }
     var n = Object.keys(S.swapSel).length;
     $("#btn-swap-confirm").disabled = !n || S.busy;
@@ -400,12 +485,14 @@
       S.pending = S.pending.filter(function (p) { return p.id !== id; });
       S.pending.push({ r: r, c: c, l: l, b: tile.l === "?", id: id });
       S.selected = null;
+      Sound.place();
       render();
     });
   }
 
   function unplace(id) {
     S.pending = S.pending.filter(function (p) { return p.id !== id; });
+    Sound.lift();
     render();
   }
 
@@ -414,12 +501,16 @@
     var placements = S.pending.map(function (p) { return { r: p.r, c: p.c, l: p.l, b: p.b }; });
     var ids = S.pending.map(function (p) { return p.id; });
     act("play", { placements: placements }).then(function () {
+      Sound.play(placements.length);
       // Played tiles leave the rack for good; the server already sent the refilled rack.
       S.rack = S.rack.filter(function (t) { return ids.indexOf(t.id) === -1; });
       S.pending = [];
       reconcileRack(S.view.rack);
       render();
-    }, function () {});
+    }, function (err) {
+      Sound.invalid();
+      if (err && err.badWords) { err.badWords.forEach(function (w) { S.words[w] = false; }); render(); }
+    });
   }
 
   function pickBlank() {
@@ -478,6 +569,7 @@
     var id = (t || blank).id;
     S.lastCellClick = null;
     S.pending.push({ r: S.cursor.r, c: S.cursor.c, l: L, b: !t, id: id });
+    Sound.place();
     render();
     advance();
   }
@@ -556,6 +648,7 @@
     if (!target) return;
     if (target.classList.contains("cell")) { placeTile(d.id, Number(target.dataset.r), Number(target.dataset.c)); return; }
     // Dropped on the rack: take back, and reorder next to the tile under the pointer.
+    if (d.from === "board") Sound.lift();
     S.pending = S.pending.filter(function (p) { return p.id !== d.id; });
     var over = document.elementFromPoint(e.clientX, e.clientY);
     over = over && over.closest("#rack .tile");
@@ -687,20 +780,27 @@
       case "start": return act("start", { settings: { checkWords: $("#opt-dict").checked } }).catch(function () {});
       case "leave":
         return act("leave").then(function () { unstore("tw:room:" + S.code); location.href = location.pathname; }, function () {});
+      case "sound":
+        Sound.setMuted(!Sound.isMuted()); renderSoundButton(); return;
       case "shuffle":
-        E.shuffle(S.rack); render(); return;
+        E.shuffle(S.rack); Sound.shuffle(); render(); return;
       case "recall":
+        if (S.pending.length) Sound.lift();
         S.pending = []; S.selected = null; render(); return;
-      case "zoom":
+      case "zoom": {
         S.zoom = !S.zoom;
         $("#board-wrap").classList.toggle("zoomed", S.zoom);
-        $("[data-action=zoom]").setAttribute("aria-pressed", String(S.zoom));
-        $("[data-action=zoom]").textContent = S.zoom ? "Fit" : "Zoom";
+        var zb = $("[data-action=zoom]");
+        zb.setAttribute("aria-pressed", String(S.zoom));
+        zb.setAttribute("aria-label", S.zoom ? "Fit board to screen" : "Zoom in on board");
+        $(".lbl", zb).textContent = S.zoom ? "Fit" : "Zoom";
+        $(".ic", zb).innerHTML = S.zoom ? ICONS.fit : ICONS.zoom;
         return;
+      }
       case "play": return submitPlay();
       case "pass":
         return confirmDialog("Pass this turn?", "You won't score anything, and it'll be " + playerName((v.turn + 1) % v.players.length) + "'s turn.", "Pass").then(function (ok) {
-          if (ok) { S.pending = []; act("pass").catch(function () {}); }
+          if (ok) { S.pending = []; act("pass").then(function () { Sound.pass(); }, function () {}); }
         });
       case "swap":
         S.swapMode = true; S.swapSel = {}; S.pending = []; S.selected = null; render(); return;
@@ -709,10 +809,21 @@
       case "swap-confirm": {
         var letters = S.rack.filter(function (t) { return S.swapSel[t.id]; }).map(function (t) { return t.l; });
         return act("exchange", { letters: letters }).then(function () {
+          Sound.pass(); Sound.shuffle();
           S.swapMode = false; S.swapSel = {}; toast("Swapped " + letters.length + (letters.length === 1 ? " tile" : " tiles") + ". Your new tiles are on your rack."); render();
         }, function () {});
       }
     }
+  }
+
+  function renderSoundButton() {
+    var off = Sound.isMuted();
+    $$("[data-action=sound]").forEach(function (b) {
+      b.innerHTML = off ? ICONS["sound-off"] : ICONS.sound;
+      b.setAttribute("aria-pressed", String(!off));
+      b.setAttribute("aria-label", off ? "Turn sound on" : "Turn sound off");
+      b.title = off ? "Sound is off" : "Sound is on";
+    });
   }
 
   /* ---------------------------------------------------------------- static pieces */

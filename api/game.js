@@ -1,5 +1,6 @@
 // Single endpoint for the whole game.
 //   GET  /api/game?code=ABCDE&token=...&v=12   -> room state for that player (or {unchanged:true})
+//   GET  /api/game?check=CAT,XQZ               -> { words: { CAT: true, XQZ: false } } (live preview)
 //   POST /api/game { action, code, token, ... } -> create | join | start | play | exchange | pass | rematch | leave
 const store = require("../lib/store");
 const G = require("../lib/game");
@@ -31,6 +32,7 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const q = req.query || Object.fromEntries(new URL(req.url, "http://x").searchParams);
+      if (q.check != null) return send(res, 200, { words: G.checkWords(q.check) });
       const code = normCode(q.code);
       const room = await store.get(code);
       if (!room) return send(res, 404, { error: "That room doesn't exist or has expired. Check the code." });
@@ -76,6 +78,8 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     const status = err.status || (err instanceof SyntaxError ? 400 : 500);
     if (status >= 500) console.error(err);
-    return send(res, status, { error: status >= 500 && !err.status ? "Something went wrong on the server. Try again." : err.message });
+    const body = { error: status >= 500 && !err.status ? "Something went wrong on the server. Try again." : err.message };
+    if (err.badWords) body.badWords = err.badWords;
+    return send(res, status, body);
   }
 };

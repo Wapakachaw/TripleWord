@@ -42,3 +42,9 @@ Type: **Rubik** for the interface (400–700), **Zilla Slab** 700 for tile lette
 - Visible 3px focus rings, skip link, roving tab index on the board grid, `aria-pressed` on tiles and toggles, live regions for turn changes and moves.
 - `prefers-reduced-motion` removes animation; `prefers-color-scheme` sets the default theme, with a manual toggle saved per device.
 - Minimum 44px touch targets for buttons and rack tiles.
+
+## Update: sound, invalid words, phone layout
+
+- **Sound** (`public/sounds.js`) — synthesised with Web Audio, no files. Wooden clack when a tile is placed, softer click when taken back, rattle on shuffle, tiles-landing + rising chime when you play, soft two-note fall when you pass or swap, a bell when another player ends their turn (brighter two-note bell when it becomes yours), buzz when the server rejects a play, short fanfare at game end. Speaker button in the top bar mutes it; saved per device (`tw:sound`).
+- **Invalid words turn red** — as you place tiles the client asks `GET /api/game?check=WORD,...` (debounced, cached) and paints every tile of a non-dictionary word red (`.tile.invalid`, tokens `--bad-tile`, `--bad-tile-hi`, `--bad-ring`), with the reason under the rack and Play disabled. Placement-rule problems (gaps, not in one line, not connected) also turn your placed tiles red once you've put down two or more. If the server rejects a play, it returns `badWords` and those words are highlighted too. Off when the host disables the dictionary check.
+- **Phones** — board sizes to the screen height so rack and buttons stay visible; player cards are compact with names truncating cleanly and scores always visible; Shuffle/Recall/Zoom become icons under 560px so all actions fit on one row down to 320px; bag count shortens to "79 in bag"; landscape phones put the board beside the rack.

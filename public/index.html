@@ -55,6 +55,7 @@
         <span class="brand-mini" aria-hidden="true"><span class="mini-tile">T</span><span class="mini-tile">W</span></span>
         <span class="topbar-title">Room <strong id="lobby-code"></strong></span>
         <span class="spacer"></span>
+        <button class="icon-btn" data-action="sound" aria-label="Turn sound off"></button>
         <button class="icon-btn" data-action="theme" aria-label="Switch light or dark theme"></button>
       </header>
 
@@ -84,10 +85,11 @@
   <section id="screen-game" class="screen game" hidden>
     <header class="topbar game-topbar">
       <span class="brand-mini" aria-hidden="true"><span class="mini-tile">T</span><span class="mini-tile">W</span></span>
-      <span class="topbar-title">Room <strong id="game-code"></strong></span>
+      <span class="topbar-title"><span class="rm">Room </span><strong id="game-code"></strong></span>
       <span class="bag-count" id="bag-count"></span>
       <span class="spacer"></span>
       <button class="icon-btn" data-action="copy-link" aria-label="Copy invite link"></button>
+      <button class="icon-btn" data-action="sound" aria-label="Turn sound off"></button>
       <button class="icon-btn" data-action="help" aria-label="How to play"></button>
       <button class="icon-btn" data-action="theme" aria-label="Switch light or dark theme"></button>
     </header>
@@ -106,9 +108,9 @@
           <p class="move-hint" id="move-hint" aria-live="polite"></p>
           <div class="actions" id="actions">
             <div class="actions-left">
-              <button class="btn btn-ghost" data-action="shuffle">Shuffle</button>
-              <button class="btn btn-ghost" data-action="recall">Recall</button>
-              <button class="btn btn-ghost zoom-btn" data-action="zoom" aria-pressed="false">Zoom</button>
+              <button class="btn btn-ghost btn-tool" data-action="shuffle" aria-label="Shuffle tiles" title="Shuffle"><span class="ic" aria-hidden="true"></span><span class="lbl">Shuffle</span></button>
+              <button class="btn btn-ghost btn-tool" data-action="recall" aria-label="Take back placed tiles" title="Recall"><span class="ic" aria-hidden="true"></span><span class="lbl">Recall</span></button>
+              <button class="btn btn-ghost btn-tool zoom-btn" data-action="zoom" aria-pressed="false" aria-label="Zoom in on board" title="Zoom"><span class="ic" aria-hidden="true"></span><span class="lbl">Zoom</span></button>
             </div>
             <div class="actions-right">
               <button class="btn btn-secondary" data-action="swap">Swap</button>
@@ -173,6 +175,7 @@
         <li>On your turn, put tiles in one row or column so they read as a word and touch tiles already on the board. The first word must cover the centre star.</li>
         <li>Tap a tile on your rack, then tap a square. Or drag it there. Tap a tile you just placed to take it back.</li>
         <li>With the keyboard: click a square, type letters, and they're placed left to right. Click the same square again, or press Space, to type top to bottom instead. Backspace takes the last one back.</li>
+        <li>If a word isn't in the dictionary, or your tiles break a placement rule, the tiles turn red and the line under your rack says why.</li>
         <li>Every new word you make counts, including ones formed across. Using all 7 tiles in one go earns 50 bonus points.</li>
         <li>Swap trades tiles with the bag and uses your turn. Pass skips your turn.</li>
         <li>The game ends when someone uses their last tile and the bag is empty, or after six turns in a row with no points. Leftover tiles count against you.</li>
@@ -189,6 +192,7 @@
 
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
+  <script src="/sounds.js"></script>
   <script src="/engine.js"></script>
   <script src="/app.js"></script>
 </body>
