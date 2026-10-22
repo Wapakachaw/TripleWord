@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Triple Word</title>
+  <meta name="description" content="A word game for you and two friends. Make a room, share the link, play from any device.">
+  <meta name="theme-color" content="#2F4A46">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Zilla+Slab:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    try { var t = localStorage.getItem("tw:theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to game</a>
+
+  <!-- HOME -->
+  <section id="screen-home" class="screen home" hidden>
+    <div class="home-inner">
+      <h1 class="wordmark" aria-label="Triple Word">
+        <span class="wm-row" aria-hidden="true"></span>
+        <span class="wm-row" aria-hidden="true"></span>
+      </h1>
+      <p class="home-lede">A word game for you and two friends. Make a room, send the link, and play from your phones or laptops.</p>
+
+      <form id="form-create" class="card home-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">Your name</span>
+          <input id="input-name" name="name" maxlength="16" required placeholder="e.g. Maya" autocomplete="nickname">
+        </label>
+        <div class="home-actions">
+          <button class="btn btn-primary btn-lg" type="submit" id="btn-create">Create a room</button>
+        </div>
+        <div class="divider"><span>or join a friend</span></div>
+        <div class="join-row">
+          <label class="field field-code">
+            <span class="field-label">Room code</span>
+            <input id="input-code" name="code" maxlength="5" placeholder="ABCDE" autocapitalize="characters" spellcheck="false" inputmode="text">
+          </label>
+          <button class="btn btn-secondary btn-lg" type="button" id="btn-join">Join room</button>
+        </div>
+        <p class="form-error" id="home-error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="screen-lobby" class="screen lobby" hidden>
+    <div class="lobby-inner">
+      <header class="topbar">
+        <span class="brand-mini" aria-hidden="true"><span class="mini-tile">T</span><span class="mini-tile">W</span></span>
+        <span class="topbar-title">Room <strong id="lobby-code"></strong></span>
+        <span class="spacer"></span>
+        <button class="icon-btn" data-action="theme" aria-label="Switch light or dark theme"></button>
+      </header>
+
+      <div class="card lobby-card">
+        <h2 class="h2">Waiting for players</h2>
+        <p class="muted">Send this link to two friends. They'll pick a name and land right here.</p>
+        <div class="share-row">
+          <input id="share-link" readonly aria-label="Invite link">
+          <button class="btn btn-secondary" data-action="copy-link">Copy link</button>
+        </div>
+        <ol class="seats" id="seats" aria-label="Players"></ol>
+        <label class="toggle" id="dict-toggle">
+          <input type="checkbox" id="opt-dict" checked>
+          <span class="toggle-track" aria-hidden="true"></span>
+          <span>Reject words that aren't in the dictionary</span>
+        </label>
+        <div class="lobby-actions">
+          <button class="btn btn-ghost" data-action="leave" id="btn-leave">Leave room</button>
+          <button class="btn btn-primary btn-lg" data-action="start" id="btn-start">Start game</button>
+        </div>
+        <p class="muted small" id="lobby-hint"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="screen-game" class="screen game" hidden>
+    <header class="topbar game-topbar">
+      <span class="brand-mini" aria-hidden="true"><span class="mini-tile">T</span><span class="mini-tile">W</span></span>
+      <span class="topbar-title">Room <strong id="game-code"></strong></span>
+      <span class="bag-count" id="bag-count"></span>
+      <span class="spacer"></span>
+      <button class="icon-btn" data-action="copy-link" aria-label="Copy invite link"></button>
+      <button class="icon-btn" data-action="help" aria-label="How to play"></button>
+      <button class="icon-btn" data-action="theme" aria-label="Switch light or dark theme"></button>
+    </header>
+
+    <main id="main" class="game-layout">
+      <aside class="players" id="players" aria-label="Scores"></aside>
+
+      <div class="table">
+        <p class="turn-banner" id="turn-banner" aria-live="polite"></p>
+        <div class="board-wrap" id="board-wrap">
+          <div class="board" id="board" role="grid" aria-label="Game board, 15 by 15"></div>
+        </div>
+
+        <div class="tray">
+          <div class="rack" id="rack" aria-label="Your tiles" role="list"></div>
+          <p class="move-hint" id="move-hint" aria-live="polite"></p>
+          <div class="actions" id="actions">
+            <div class="actions-left">
+              <button class="btn btn-ghost" data-action="shuffle">Shuffle</button>
+              <button class="btn btn-ghost" data-action="recall">Recall</button>
+              <button class="btn btn-ghost zoom-btn" data-action="zoom" aria-pressed="false">Zoom</button>
+            </div>
+            <div class="actions-right">
+              <button class="btn btn-secondary" data-action="swap">Swap</button>
+              <button class="btn btn-secondary" data-action="pass">Pass</button>
+              <button class="btn btn-primary btn-play" data-action="play" id="btn-play">Play</button>
+            </div>
+          </div>
+          <div class="actions swap-bar" id="swap-bar" hidden>
+            <span class="swap-label" id="swap-label">Pick the tiles you want to swap</span>
+            <div class="actions-right">
+              <button class="btn btn-ghost" data-action="swap-cancel">Cancel</button>
+              <button class="btn btn-primary" data-action="swap-confirm" id="btn-swap-confirm">Swap tiles</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="log-panel">
+        <h2 class="panel-title">Moves</h2>
+        <ol class="log" id="log" aria-live="polite"></ol>
+      </aside>
+    </main>
+  </section>
+
+  <!-- DIALOGS -->
+  <dialog id="dlg-blank" class="dialog" aria-labelledby="blank-title">
+    <form method="dialog">
+      <h2 class="h2" id="blank-title">Pick a letter for your blank</h2>
+      <p class="muted">Blank tiles score zero points.</p>
+      <div class="letter-grid" id="letter-grid"></div>
+      <div class="dialog-actions"><button class="btn btn-ghost" value="">Cancel</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm" class="dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 class="h2" id="confirm-title"></h2>
+      <p class="muted" id="confirm-body"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" value="no">Cancel</button>
+        <button class="btn btn-primary" value="yes" id="confirm-yes"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-over" class="dialog dialog-wide" aria-labelledby="over-title">
+    <form method="dialog">
+      <h2 class="h2" id="over-title"></h2>
+      <p class="muted" id="over-reason"></p>
+      <ol class="standings" id="standings"></ol>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" value="close">Look at the board</button>
+        <button class="btn btn-primary" value="rematch" id="btn-rematch">Play again</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-help" class="dialog dialog-wide" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 class="h2" id="help-title">How to play</h2>
+      <ul class="help-list">
+        <li>On your turn, put tiles in one row or column so they read as a word and touch tiles already on the board. The first word must cover the centre star.</li>
+        <li>Tap a tile on your rack, then tap a square. Or drag it there. Tap a tile you just placed to take it back.</li>
+        <li>With the keyboard: click a square, type letters, and they're placed left to right. Click the same square again, or press Space, to type top to bottom instead. Backspace takes the last one back.</li>
+        <li>Every new word you make counts, including ones formed across. Using all 7 tiles in one go earns 50 bonus points.</li>
+        <li>Swap trades tiles with the bag and uses your turn. Pass skips your turn.</li>
+        <li>The game ends when someone uses their last tile and the bag is empty, or after six turns in a row with no points. Leftover tiles count against you.</li>
+      </ul>
+      <div class="legend" aria-label="Bonus squares">
+        <span class="legend-item"><span class="sq sq-TW">3W</span>Triple word</span>
+        <span class="legend-item"><span class="sq sq-DW">2W</span>Double word</span>
+        <span class="legend-item"><span class="sq sq-TL">3L</span>Triple letter</span>
+        <span class="legend-item"><span class="sq sq-DL">2L</span>Double letter</span>
+      </div>
+      <div class="dialog-actions"><button class="btn btn-primary" value="ok">Got it</button></div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <script src="/engine.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
